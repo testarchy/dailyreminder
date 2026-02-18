@@ -67,6 +67,18 @@
           <button id="add-task-btn" aria-label="Add task">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
           </button>
+          <button id="ai-suggest-btn" class="ai-btn" aria-label="AI suggestions" title="Get AI task suggestions">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+          </button>
+        </div>
+        <div id="ai-suggestions" class="ai-suggestions" style="display:none">
+          <div class="ai-suggestions-header">
+            <span class="ai-label">AI Suggestions</span>
+            <button id="dismiss-suggestions-btn" class="icon-btn" aria-label="Dismiss suggestions">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+          </div>
+          <div id="ai-suggestions-list"></div>
         </div>
         <ul id="task-list" class="task-list"></ul>
         <div id="empty-state" class="empty-state">
@@ -159,11 +171,34 @@
         <button id="reset-today-btn" class="menu-item danger">Reset today's list</button>
         <hr>
         <button id="disconnect-google-btn" class="menu-item danger" style="display:none">Disconnect Google Calendar</button>
+        <button id="setup-ai-btn" class="menu-item">Set up AI suggestions</button>
         <button id="change-password-btn" class="menu-item">Change password</button>
         <button id="lock-now-btn" class="menu-item">Lock app</button>
         <hr>
         <button id="menu-close-btn" class="menu-item">Close</button>
       </div>
+    </div>
+  </div>
+
+  <!-- AI Setup Overlay -->
+  <div id="ai-setup-overlay" class="menu-overlay hidden">
+    <div class="menu-panel ai-setup-panel">
+      <h3>AI Task Suggestions</h3>
+      <p class="ai-setup-desc">Claude analyzes your calendar and tasks to suggest what to do next. Requires an Anthropic API key.</p>
+      <div class="setup-steps">
+        <ol>
+          <li>Go to <strong>console.anthropic.com</strong></li>
+          <li>Create an API key</li>
+          <li>Paste it below</li>
+        </ol>
+      </div>
+      <input type="password" id="ai-key-input" placeholder="sk-ant-..." autocomplete="off">
+      <p id="ai-key-error" class="lock-error"></p>
+      <div class="ai-setup-actions">
+        <button id="save-ai-key-btn" class="lock-btn">Save Key</button>
+        <button id="remove-ai-key-btn" class="menu-item danger" style="display:none">Remove API key</button>
+      </div>
+      <button id="close-ai-setup-btn" class="menu-item" style="text-align:center; margin-top:8px">Close</button>
     </div>
   </div>
 

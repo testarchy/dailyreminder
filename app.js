@@ -547,6 +547,265 @@
     timeInput.addEventListener("focus", () => clearTimeout(blurTimeout));
   }
 
+  // --- AI Suggestions (Claude) ---
+  let aiSuggestions = [];
+  let aiLoading = false;
+
+  function getAiKey() {
+    return localStorage.getItem("dr_anthropic_key");
+  }
+
+  function showAiSetup() {
+    const overlay = $("#ai-setup-overlay");
+    overlay.classList.remove("hidden");
+    const input = $("#ai-key-input");
+    const removeBtn = $("#remove-ai-key-btn");
+    const error = $("#ai-key-error");
+    error.textContent = "";
+
+    if (getAiKey()) {
+      input.value = "";
+      input.placeholder = "Key saved (enter new to replace)";
+      removeBtn.style.display = "block";
+    } else {
+      input.value = "";
+      input.placeholder = "sk-ant-...";
+      removeBtn.style.display = "none";
+    }
+    input.focus();
+  }
+
+  function hideAiSetup() {
+    $("#ai-setup-overlay").classList.add("hidden");
+  }
+
+  function saveAiKey() {
+    const input = $("#ai-key-input");
+    const val = input.value.trim();
+    if (!val) {
+      if (getAiKey()) {
+        hideAiSetup();
+        return;
+      }
+      $("#ai-key-error").textContent = "Please enter an API key";
+      return;
+    }
+    if (!val.startsWith("sk-")) {
+      $("#ai-key-error").textContent = "API key should start with sk-";
+      return;
+    }
+    localStorage.setItem("dr_anthropic_key", val);
+    $("#ai-key-error").textContent = "";
+    hideAiSetup();
+    updateAiButtonState();
+  }
+
+  function removeAiKey() {
+    localStorage.removeItem("dr_anthropic_key");
+    hideAiSetup();
+    updateAiButtonState();
+  }
+
+  function updateAiButtonState() {
+    const btn = $("#ai-suggest-btn");
+    if (getAiKey()) {
+      btn.classList.add("ai-btn-active");
+    } else {
+      btn.classList.remove("ai-btn-active");
+    }
+  }
+
+  function buildAiPrompt() {
+    const now = new Date();
+    const timeStr = now.toLocaleTimeString("en-US", {
+      hour: "numeric",
+      minute: "2-digit",
+    });
+    const dayStr = now.toLocaleDateString("en-US", {
+      weekday: "long",
+      month: "long",
+      day: "numeric",
+    });
+
+    let context = `It is ${dayStr}, currently ${timeStr}.\n\n`;
+
+    // Existing tasks
+    if (todayTasks.length > 0) {
+      context += "Current tasks for today:\n";
+      for (const t of todayTasks) {
+        const time = t.time ? ` (${formatTime12h(t.time)})` : "";
+        const status = t.done ? " [DONE]" : "";
+        context += `- ${t.text}${time}${status}\n`;
+      }
+      context += "\n";
+    }
+
+    // Calendar events
+    if (calendarEvents.length > 0) {
+      context += "Google Calendar events today:\n";
+      for (const ev of calendarEvents) {
+        const time = ev.allDay
+          ? "All day"
+          : formatTime12h(ev.start.slice(11, 16)) +
+            " - " +
+            formatTime12h(ev.end.slice(11, 16));
+        context += `- ${ev.title} (${time})\n`;
+      }
+      context += "\n";
+    }
+
+    // Recurring tasks
+    if (recurringTasks.length > 0) {
+      context += "Recurring daily tasks:\n";
+      for (const r of recurringTasks) {
+        const time = r.time ? ` (${formatTime12h(r.time)})` : "";
+        context += `- ${r.text}${time}\n`;
+      }
+      context += "\n";
+    }
+
+    return context;
+  }
+
+  async function fetchAiSuggestions() {
+    const key = getAiKey();
+    if (!key) {
+      showAiSetup();
+      return;
+    }
+
+    if (aiLoading) return;
+    aiLoading = true;
+    renderAiLoading();
+
+    const context = buildAiPrompt();
+
+    try {
+      const res = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": key,
+          "anthropic-version": "2023-06-01",
+          "anthropic-dangerous-direct-browser-access": "true",
+        },
+        body: JSON.stringify({
+          model: "claude-haiku-4-5-20251001",
+          max_tokens: 1024,
+          messages: [
+            {
+              role: "user",
+              content:
+                context +
+                "Based on my schedule and existing tasks, suggest 3-5 additional tasks I should do today. " +
+                "Consider preparation for upcoming events, follow-ups, breaks, and things people commonly forget. " +
+                "Be specific and practical.\n\n" +
+                'Respond ONLY with a JSON array of objects, each with "text" (task description) and "time" (optional, HH:MM 24h format or null). ' +
+                "No markdown, no explanation, just the JSON array.",
+            },
+          ],
+        }),
+      });
+
+      if (res.status === 401) {
+        localStorage.removeItem("dr_anthropic_key");
+        updateAiButtonState();
+        throw new Error("Invalid API key. Please re-enter your key.");
+      }
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(
+          errData.error?.message || "API error: " + res.status
+        );
+      }
+
+      const data = await res.json();
+      const text = data.content[0].text.trim();
+
+      // Parse JSON from response (handle possible markdown wrapping)
+      let jsonStr = text;
+      const jsonMatch = text.match(/\[[\s\S]*\]/);
+      if (jsonMatch) jsonStr = jsonMatch[0];
+
+      aiSuggestions = JSON.parse(jsonStr).map((s) => ({
+        text: s.text,
+        time: s.time || null,
+      }));
+
+      aiLoading = false;
+      renderAiSuggestions();
+    } catch (err) {
+      aiLoading = false;
+      aiSuggestions = [];
+      renderAiError(err.message);
+    }
+  }
+
+  function renderAiLoading() {
+    const container = $("#ai-suggestions");
+    const list = $("#ai-suggestions-list");
+    container.style.display = "block";
+    list.innerHTML =
+      '<div class="ai-loading"><div class="ai-spinner"></div>Thinking...</div>';
+  }
+
+  function renderAiError(msg) {
+    const container = $("#ai-suggestions");
+    const list = $("#ai-suggestions-list");
+    container.style.display = "block";
+    list.innerHTML = `<div class="ai-error">${escapeHtml(msg)}</div>`;
+  }
+
+  function renderAiSuggestions() {
+    const container = $("#ai-suggestions");
+    const list = $("#ai-suggestions-list");
+
+    if (aiSuggestions.length === 0) {
+      container.style.display = "none";
+      return;
+    }
+
+    container.style.display = "block";
+    list.innerHTML = aiSuggestions
+      .map(
+        (s, i) => `
+      <div class="ai-suggestion-item" data-index="${i}">
+        <div class="ai-suggestion-content">
+          ${s.time ? `<span class="task-time">${formatTime12h(s.time)}</span>` : ""}
+          <span class="ai-suggestion-text">${escapeHtml(s.text)}</span>
+        </div>
+        <button class="ai-add-btn" data-index="${i}" aria-label="Add this task">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        </button>
+      </div>`
+      )
+      .join("");
+  }
+
+  function addSuggestionAsTask(index) {
+    const suggestion = aiSuggestions[index];
+    if (!suggestion) return;
+
+    todayTasks.push({
+      id: generateId(),
+      text: suggestion.text,
+      done: false,
+      time: suggestion.time,
+    });
+    saveToday();
+
+    // Remove from suggestions
+    aiSuggestions.splice(index, 1);
+    renderAiSuggestions();
+    renderTodayList();
+  }
+
+  function dismissAiSuggestions() {
+    aiSuggestions = [];
+    $("#ai-suggestions").style.display = "none";
+  }
+
   // --- Google Calendar ---
   const SCOPES = "https://www.googleapis.com/auth/calendar.readonly";
   let tokenClient = null;
@@ -953,6 +1212,28 @@
         startEditTask(item, item.dataset.id, "recurring");
       }
     });
+
+    // AI suggestions
+    $("#ai-suggest-btn").addEventListener("click", fetchAiSuggestions);
+    $("#dismiss-suggestions-btn").addEventListener("click", dismissAiSuggestions);
+    $("#ai-suggestions-list").addEventListener("click", (e) => {
+      const btn = e.target.closest(".ai-add-btn");
+      if (btn) addSuggestionAsTask(Number(btn.dataset.index));
+    });
+    $("#setup-ai-btn").addEventListener("click", () => {
+      hideMenu();
+      showAiSetup();
+    });
+    $("#save-ai-key-btn").addEventListener("click", saveAiKey);
+    $("#ai-key-input").addEventListener("keydown", (e) => {
+      if (e.key === "Enter") saveAiKey();
+    });
+    $("#remove-ai-key-btn").addEventListener("click", removeAiKey);
+    $("#close-ai-setup-btn").addEventListener("click", hideAiSetup);
+    $("#ai-setup-overlay").addEventListener("click", (e) => {
+      if (e.target === $("#ai-setup-overlay")) hideAiSetup();
+    });
+    updateAiButtonState();
 
     // Google Calendar events
     $("#connect-google-btn").addEventListener("click", connectGoogle);
