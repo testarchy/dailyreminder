@@ -19,6 +19,109 @@
     return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
   }
 
+  // --- Password / Lock ---
+  async function hashPassword(password) {
+    const encoder = new TextEncoder();
+    const data = encoder.encode(password);
+    const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+  }
+
+  function hasPassword() {
+    return !!localStorage.getItem("dr_password_hash");
+  }
+
+  function isUnlocked() {
+    return sessionStorage.getItem("dr_unlocked") === "true";
+  }
+
+  function showLockScreen(mode) {
+    const lockScreen = $("#lock-screen");
+    const title = $("#lock-title");
+    const subtitle = $("#lock-subtitle");
+    const passwordInput = $("#lock-password");
+    const confirmInput = $("#lock-confirm");
+    const submitBtn = $("#lock-submit");
+    const error = $("#lock-error");
+
+    lockScreen.classList.remove("hidden");
+    $("#app").classList.add("app-hidden");
+    error.textContent = "";
+    passwordInput.value = "";
+    confirmInput.value = "";
+
+    if (mode === "set" || mode === "change") {
+      title.textContent = mode === "change" ? "Change Password" : "Set a Password";
+      subtitle.textContent = mode === "change"
+        ? "Enter a new password for your app"
+        : "Protect your Daily Reminder";
+      confirmInput.classList.remove("hidden");
+      confirmInput.placeholder = "Confirm password";
+      passwordInput.placeholder = mode === "change" ? "New password" : "Enter password";
+      submitBtn.textContent = mode === "change" ? "Update Password" : "Set Password";
+      submitBtn.onclick = async () => {
+        const pw = passwordInput.value;
+        const confirm = confirmInput.value;
+        if (pw.length < 4) {
+          error.textContent = "Password must be at least 4 characters";
+          return;
+        }
+        if (pw !== confirm) {
+          error.textContent = "Passwords don't match";
+          return;
+        }
+        const hash = await hashPassword(pw);
+        localStorage.setItem("dr_password_hash", hash);
+        sessionStorage.setItem("dr_unlocked", "true");
+        lockScreen.classList.add("hidden");
+        $("#app").classList.remove("app-hidden");
+        if (mode === "change") hideMenu();
+      };
+    } else {
+      // unlock mode
+      title.textContent = "Welcome Back";
+      subtitle.textContent = "Enter your password to continue";
+      confirmInput.classList.add("hidden");
+      passwordInput.placeholder = "Enter password";
+      submitBtn.textContent = "Unlock";
+      submitBtn.onclick = async () => {
+        const pw = passwordInput.value;
+        if (!pw) return;
+        const hash = await hashPassword(pw);
+        const stored = localStorage.getItem("dr_password_hash");
+        if (hash === stored) {
+          sessionStorage.setItem("dr_unlocked", "true");
+          lockScreen.classList.add("hidden");
+          $("#app").classList.remove("app-hidden");
+        } else {
+          error.textContent = "Incorrect password";
+          passwordInput.value = "";
+          passwordInput.focus();
+        }
+      };
+    }
+
+    passwordInput.focus();
+    passwordInput.onkeydown = (e) => {
+      if (e.key === "Enter") {
+        if (confirmInput.classList.contains("hidden")) {
+          submitBtn.click();
+        } else {
+          confirmInput.focus();
+        }
+      }
+    };
+    confirmInput.onkeydown = (e) => {
+      if (e.key === "Enter") submitBtn.click();
+    };
+  }
+
+  function lockApp() {
+    sessionStorage.removeItem("dr_unlocked");
+    showLockScreen("unlock");
+  }
+
   // --- Storage ---
   function loadJSON(key, fallback) {
     try {
@@ -247,6 +350,16 @@
 
   // --- Init ---
   function init() {
+    // Check password lock
+    if (!hasPassword()) {
+      showLockScreen("set");
+    } else if (!isUnlocked()) {
+      showLockScreen("unlock");
+    } else {
+      $("#lock-screen").classList.add("hidden");
+      $("#app").classList.remove("app-hidden");
+    }
+
     // Set date
     $("#date-display").textContent = formatDate(todayKey());
 
@@ -330,6 +443,17 @@
         renderTodayList();
         hideMenu();
       }
+    });
+
+    // Password / lock menu items
+    $("#change-password-btn").addEventListener("click", () => {
+      hideMenu();
+      showLockScreen("change");
+    });
+
+    $("#lock-now-btn").addEventListener("click", () => {
+      hideMenu();
+      lockApp();
     });
 
     // Check for day change every minute
