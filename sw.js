@@ -1,4 +1,4 @@
-const CACHE_NAME = "daily-reminder-v1";
+const CACHE_NAME = "daily-reminder-v2";
 const ASSETS = [
   ".",
   "index.html",
@@ -28,9 +28,20 @@ self.addEventListener("activate", (event) => {
 });
 
 self.addEventListener("fetch", (event) => {
+  const url = new URL(event.request.url);
+
+  // Don't cache Google API calls or GIS library
+  if (
+    url.hostname.includes("googleapis.com") ||
+    url.hostname.includes("google.com") ||
+    url.hostname.includes("gstatic.com")
+  ) {
+    event.respondWith(fetch(event.request).catch(() => new Response("", { status: 503 })));
+    return;
+  }
+
   event.respondWith(
     caches.match(event.request).then((cached) => {
-      // Network first for HTML, cache first for everything else
       if (event.request.mode === "navigate") {
         return fetch(event.request)
           .then((response) => {

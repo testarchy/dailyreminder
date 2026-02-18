@@ -15,8 +15,22 @@
     });
   }
 
+  function formatTime12h(time24) {
+    if (!time24) return "";
+    const [h, m] = time24.split(":").map(Number);
+    const ampm = h >= 12 ? "PM" : "AM";
+    const h12 = h % 12 || 12;
+    return h12 + ":" + String(m).padStart(2, "0") + " " + ampm;
+  }
+
   function generateId() {
     return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+  }
+
+  function escapeHtml(str) {
+    const div = document.createElement("div");
+    div.textContent = str;
+    return div.innerHTML;
   }
 
   // --- Password / Lock ---
@@ -79,7 +93,6 @@
         if (mode === "change") hideMenu();
       };
     } else {
-      // unlock mode
       title.textContent = "Welcome Back";
       subtitle.textContent = "Enter your password to continue";
       confirmInput.classList.add("hidden");
@@ -138,10 +151,15 @@
 
   // --- State ---
   let recurringTasks = loadJSON("dr_recurring", []);
-  // { id, text }
+  // { id, text, time? }
 
   let todayTasks = [];
-  // { id, text, done, recurringId? }
+  // { id, text, done, recurringId?, time? }
+
+  let calendarEvents = [];
+  // { id, title, start, end, allDay }
+
+  let editingTaskId = null;
 
   function loadToday() {
     const key = todayKey();
@@ -150,16 +168,15 @@
     if (saved) {
       todayTasks = saved;
     } else {
-      // New day: seed from recurring tasks
       todayTasks = recurringTasks.map((r) => ({
         id: generateId(),
         text: r.text,
         done: false,
         recurringId: r.id,
+        time: r.time || null,
       }));
     }
 
-    // Also add any new recurring tasks not yet in today's list
     const existingRecurringIds = new Set(
       todayTasks.filter((t) => t.recurringId).map((t) => t.recurringId)
     );
@@ -170,6 +187,7 @@
           text: r.text,
           done: false,
           recurringId: r.id,
+          time: r.time || null,
         });
       }
     }
@@ -185,37 +203,138 @@
     saveJSON("dr_recurring", recurringTasks);
   }
 
-  // --- Rendering ---
-  function renderTodayList() {
-    const list = $("#task-list");
-    const empty = $("#empty-state");
+  // --- Streak ---
+  function calculateStreak() {
+    let streak = 0;
+    const date = new Date();
 
-    if (todayTasks.length === 0) {
-      list.innerHTML = "";
-      empty.style.display = "flex";
-      updateProgress();
-      return;
+    // Check today
+    const todayStr = todayKey();
+    const todayData = loadJSON("dr_day_" + todayStr, null);
+    const todayComplete =
+      todayData && todayData.length > 0 && todayData.every((t) => t.done);
+
+    if (todayComplete) {
+      streak = 1;
     }
 
-    empty.style.display = "none";
-    list.innerHTML = todayTasks
-      .map(
-        (task) => `
-      <li class="task-item ${task.done ? "completed" : ""}" data-id="${task.id}">
+    // Walk backward from yesterday
+    date.setDate(date.getDate() - 1);
+    for (let i = 0; i < 365; i++) {
+      const key = date.toISOString().slice(0, 10);
+      const data = loadJSON("dr_day_" + key, null);
+      if (!data || data.length === 0 || !data.every((t) => t.done)) break;
+      streak++;
+      date.setDate(date.getDate() - 1);
+    }
+
+    return streak;
+  }
+
+  function renderStreak() {
+    const streak = calculateStreak();
+    const el = $("#streak-display");
+    if (streak > 0) {
+      $("#streak-count").textContent = streak;
+      el.style.display = "inline-flex";
+    } else {
+      el.style.display = "none";
+    }
+  }
+
+  // --- Rendering ---
+  function buildTimelineItems() {
+    const items = [];
+
+    for (const task of todayTasks) {
+      items.push({
+        type: "task",
+        time: task.time || null,
+        sortTime: task.time || "99:99",
+        data: task,
+      });
+    }
+
+    for (const ev of calendarEvents) {
+      const evTime = ev.allDay ? null : ev.start.slice(11, 16);
+      items.push({
+        type: "event",
+        time: evTime,
+        sortTime: evTime || "00:00",
+        data: ev,
+      });
+    }
+
+    items.sort((a, b) => {
+      const aHas = a.time !== null;
+      const bHas = b.time !== null;
+      if (aHas && bHas) return a.sortTime.localeCompare(b.sortTime);
+      if (aHas && !bHas) return -1;
+      if (!aHas && bHas) return 1;
+      return 0;
+    });
+
+    return items;
+  }
+
+  function renderTaskItem(task) {
+    const timeStr = task.time ? formatTime12h(task.time) : "";
+    return `
+      <li class="task-item ${task.done ? "completed" : ""}" data-id="${task.id}" data-type="task">
         <div class="checkbox ${task.done ? "checked" : ""}" role="checkbox" aria-checked="${task.done}" tabindex="0">
           <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
         </div>
+        ${timeStr ? `<span class="task-time">${timeStr}</span>` : ""}
         <span class="task-text">${escapeHtml(task.text)}</span>
         ${task.recurringId ? '<span class="recurring-badge">Daily</span>' : ""}
         <button class="delete-btn" aria-label="Delete task">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
         </button>
-      </li>
-    `
+      </li>`;
+  }
+
+  function renderEventItem(ev) {
+    const timeStr = ev.allDay
+      ? "All day"
+      : formatTime12h(ev.start.slice(11, 16));
+    const endStr =
+      ev.allDay ? "" : " \u2013 " + formatTime12h(ev.end.slice(11, 16));
+    return `
+      <li class="event-item" data-type="event">
+        <div class="event-dot"></div>
+        <span class="event-time">${timeStr}${endStr}</span>
+        <span class="event-title">${escapeHtml(ev.title)}</span>
+      </li>`;
+  }
+
+  function renderTodayList() {
+    const list = $("#task-list");
+    const empty = $("#empty-state");
+
+    // Don't re-render if user is editing
+    if (editingTaskId) return;
+
+    const items = buildTimelineItems();
+
+    if (todayTasks.length === 0 && calendarEvents.length === 0) {
+      list.innerHTML = "";
+      empty.style.display = "flex";
+      updateProgress();
+      renderStreak();
+      return;
+    }
+
+    empty.style.display = "none";
+    list.innerHTML = items
+      .map((item) =>
+        item.type === "task"
+          ? renderTaskItem(item.data)
+          : renderEventItem(item.data)
       )
       .join("");
 
     updateProgress();
+    renderStreak();
   }
 
   function renderRecurringList() {
@@ -230,17 +349,18 @@
 
     empty.style.display = "none";
     list.innerHTML = recurringTasks
-      .map(
-        (task) => `
+      .map((task) => {
+        const timeStr = task.time ? formatTime12h(task.time) : "";
+        return `
       <li class="task-item" data-id="${task.id}">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" style="flex-shrink:0"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+        ${timeStr ? `<span class="task-time">${timeStr}</span>` : ""}
         <span class="task-text">${escapeHtml(task.text)}</span>
         <button class="delete-btn" aria-label="Delete recurring task" style="opacity:0.6">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
         </button>
-      </li>
-    `
-      )
+      </li>`;
+      })
       .join("");
   }
 
@@ -262,46 +382,421 @@
     }
   }
 
-  function escapeHtml(str) {
-    const div = document.createElement("div");
-    div.textContent = str;
-    return div.innerHTML;
+  // --- History ---
+  function renderHistory() {
+    const list = $("#history-list");
+    const empty = $("#history-empty");
+    const days = [];
+
+    for (let i = 1; i <= 7; i++) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      const key = d.toISOString().slice(0, 10);
+      const data = loadJSON("dr_day_" + key, null);
+      if (data && data.length > 0) {
+        const done = data.filter((t) => t.done).length;
+        const total = data.length;
+        days.push({
+          date: key,
+          label: d.toLocaleDateString("en-US", {
+            weekday: "short",
+            month: "short",
+            day: "numeric",
+          }),
+          done,
+          total,
+          allDone: done === total,
+        });
+      }
+    }
+
+    if (days.length === 0) {
+      list.innerHTML = "";
+      empty.style.display = "flex";
+      return;
+    }
+
+    empty.style.display = "none";
+    list.innerHTML = days
+      .map((day) => {
+        const pct = Math.round((day.done / day.total) * 100);
+        const barColor = day.allDone
+          ? "linear-gradient(90deg, #51cf66, #20c997)"
+          : "linear-gradient(90deg, var(--accent), #a78bfa)";
+        return `
+      <div class="history-day ${day.allDone ? "all-done" : ""}">
+        <span class="history-date">${escapeHtml(day.label)}</span>
+        <div class="history-bar-container">
+          <div class="history-bar" style="width:${pct}%; background:${barColor}"></div>
+        </div>
+        <span class="history-count">${day.done}/${day.total}</span>
+        ${day.allDone ? '<svg class="history-check" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>' : ""}
+      </div>`;
+      })
+      .join("");
+  }
+
+  // --- Inline Editing ---
+  function startEditTask(li, id, list) {
+    if (editingTaskId) return;
+    editingTaskId = id;
+
+    const taskArr = list === "today" ? todayTasks : recurringTasks;
+    const task = taskArr.find((t) => t.id === id);
+    if (!task) return;
+
+    const textSpan = li.querySelector(".task-text");
+    const origText = task.text;
+    const origTime = task.time || "";
+
+    const editWrap = document.createElement("div");
+    editWrap.className = "edit-wrap";
+
+    const timeInput = document.createElement("input");
+    timeInput.type = "time";
+    timeInput.className = "edit-time-input";
+    timeInput.value = origTime;
+
+    const textInput = document.createElement("input");
+    textInput.type = "text";
+    textInput.className = "task-edit-input";
+    textInput.value = origText;
+
+    editWrap.appendChild(timeInput);
+    editWrap.appendChild(textInput);
+    textSpan.replaceWith(editWrap);
+
+    // Hide badges and delete btn during edit
+    const badge = li.querySelector(".recurring-badge");
+    const timeEl = li.querySelector(".task-time");
+    const delBtn = li.querySelector(".delete-btn");
+    if (badge) badge.style.display = "none";
+    if (timeEl) timeEl.style.display = "none";
+    if (delBtn) delBtn.style.display = "none";
+
+    textInput.focus();
+    textInput.select();
+
+    function save() {
+      const newText = textInput.value.trim();
+      const newTime = timeInput.value || null;
+      if (newText && newText !== origText) {
+        task.text = newText;
+      }
+      task.time = newTime;
+
+      if (list === "today") {
+        saveToday();
+      } else {
+        saveRecurring();
+      }
+      editingTaskId = null;
+      if (list === "today") {
+        renderTodayList();
+      } else {
+        renderRecurringList();
+      }
+    }
+
+    function cancel() {
+      editingTaskId = null;
+      if (list === "today") {
+        renderTodayList();
+      } else {
+        renderRecurringList();
+      }
+    }
+
+    textInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        save();
+      }
+      if (e.key === "Escape") {
+        e.preventDefault();
+        cancel();
+      }
+    });
+
+    timeInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        textInput.focus();
+      }
+      if (e.key === "Escape") {
+        e.preventDefault();
+        cancel();
+      }
+    });
+
+    let blurTimeout;
+    function handleBlur() {
+      blurTimeout = setTimeout(() => {
+        if (
+          document.activeElement !== textInput &&
+          document.activeElement !== timeInput
+        ) {
+          save();
+        }
+      }, 150);
+    }
+
+    textInput.addEventListener("blur", handleBlur);
+    timeInput.addEventListener("blur", handleBlur);
+    textInput.addEventListener("focus", () => clearTimeout(blurTimeout));
+    timeInput.addEventListener("focus", () => clearTimeout(blurTimeout));
+  }
+
+  // --- Google Calendar ---
+  const SCOPES = "https://www.googleapis.com/auth/calendar.readonly";
+  let tokenClient = null;
+
+  function getClientId() {
+    return localStorage.getItem("dr_google_client_id");
+  }
+
+  function getStoredToken() {
+    const data = loadJSON("dr_google_token", null);
+    if (!data) return null;
+    if (Date.now() > data.expires_at) return null;
+    return data.access_token;
+  }
+
+  function storeToken(tokenResponse) {
+    const expiresAt =
+      Date.now() + tokenResponse.expires_in * 1000 - 60000;
+    saveJSON("dr_google_token", {
+      access_token: tokenResponse.access_token,
+      expires_at: expiresAt,
+    });
+  }
+
+  function initTokenClient() {
+    const clientId = getClientId();
+    if (!clientId || typeof google === "undefined" || !google.accounts)
+      return;
+
+    tokenClient = google.accounts.oauth2.initTokenClient({
+      client_id: clientId,
+      scope: SCOPES,
+      callback: (tokenResponse) => {
+        if (tokenResponse.error) {
+          console.error("OAuth error:", tokenResponse);
+          return;
+        }
+        storeToken(tokenResponse);
+        fetchCalendarEvents();
+      },
+    });
+  }
+
+  function connectGoogle() {
+    const clientId = getClientId();
+    if (!clientId) {
+      showClientIdSetup();
+      return;
+    }
+
+    if (!tokenClient) initTokenClient();
+    if (!tokenClient) {
+      alert("Google sign-in unavailable. Check your internet connection.");
+      return;
+    }
+
+    tokenClient.requestAccessToken({ prompt: "consent" });
+  }
+
+  function disconnectGoogle() {
+    const token = getStoredToken();
+    if (token && typeof google !== "undefined" && google.accounts) {
+      google.accounts.oauth2.revoke(token);
+    }
+    localStorage.removeItem("dr_google_token");
+    localStorage.removeItem("dr_calendar_cache");
+    calendarEvents = [];
+    renderCalendarSection();
+    renderTodayList();
+  }
+
+  function showClientIdSetup() {
+    $("#calendar-setup-main").style.display = "none";
+    $("#client-id-form").style.display = "block";
+    $("#client-id-input").focus();
+  }
+
+  function saveClientId() {
+    const input = $("#client-id-input");
+    const val = input.value.trim();
+    if (!val || !val.includes(".apps.googleusercontent.com")) {
+      $("#client-id-error").textContent =
+        "Please enter a valid Google Client ID";
+      return;
+    }
+    localStorage.setItem("dr_google_client_id", val);
+    $("#client-id-error").textContent = "";
+    $("#client-id-form").style.display = "none";
+    $("#calendar-setup-main").style.display = "block";
+    initTokenClient();
+    connectGoogle();
+  }
+
+  async function fetchCalendarEvents() {
+    const token = getStoredToken();
+    if (!token) return;
+
+    const today = todayKey();
+    const timeMin = today + "T00:00:00.000Z";
+    const tomorrow = new Date(new Date(today + "T12:00:00Z").getTime() + 86400000)
+      .toISOString()
+      .slice(0, 10);
+    const timeMax = tomorrow + "T00:00:00.000Z";
+
+    const url =
+      "https://www.googleapis.com/calendar/v3/calendars/primary/events?" +
+      "timeMin=" + encodeURIComponent(timeMin) +
+      "&timeMax=" + encodeURIComponent(timeMax) +
+      "&singleEvents=true&orderBy=startTime&maxResults=50";
+
+    try {
+      const res = await fetch(url, {
+        headers: { Authorization: "Bearer " + token },
+      });
+
+      if (res.status === 401) {
+        localStorage.removeItem("dr_google_token");
+        if (tokenClient) {
+          tokenClient.requestAccessToken({ prompt: "" });
+        }
+        return;
+      }
+
+      if (!res.ok) throw new Error("Calendar API error: " + res.status);
+
+      const data = await res.json();
+      calendarEvents = (data.items || []).map((ev) => ({
+        id: ev.id,
+        title: ev.summary || "(No title)",
+        start: ev.start.dateTime || ev.start.date,
+        end: ev.end.dateTime || ev.end.date,
+        allDay: !ev.start.dateTime,
+      }));
+
+      // Cache for offline
+      const cache = loadJSON("dr_calendar_cache", {});
+      cache[today] = { events: calendarEvents, fetched_at: Date.now() };
+      // Clean old entries
+      for (const k of Object.keys(cache)) {
+        const cutoff = new Date(Date.now() - 3 * 86400000)
+          .toISOString()
+          .slice(0, 10);
+        if (k < cutoff) delete cache[k];
+      }
+      saveJSON("dr_calendar_cache", cache);
+
+      renderCalendarSection();
+      renderTodayList();
+    } catch (err) {
+      console.error("Failed to fetch calendar:", err);
+      loadCachedEvents();
+      renderCalendarSection();
+      renderTodayList();
+    }
+  }
+
+  function loadCachedEvents() {
+    const cache = loadJSON("dr_calendar_cache", {});
+    const today = todayKey();
+    if (cache[today]) {
+      calendarEvents = cache[today].events;
+    }
+  }
+
+  function renderCalendarSection() {
+    const token = getStoredToken();
+    const clientId = getClientId();
+    const hasConnection = !!token || (!!clientId && calendarEvents.length > 0);
+
+    if (hasConnection && calendarEvents.length >= 0 && token) {
+      // Connected state
+      $("#calendar-setup").style.display = "none";
+      $("#calendar-connected").style.display = "block";
+      $("#disconnect-google-btn").style.display = "block";
+
+      const list = $("#events-list");
+      const empty = $("#events-empty");
+
+      if (calendarEvents.length === 0) {
+        list.innerHTML = "";
+        empty.style.display = "flex";
+      } else {
+        empty.style.display = "none";
+        list.innerHTML = calendarEvents
+          .map((ev) => {
+            const timeStr = ev.allDay
+              ? "All day"
+              : formatTime12h(ev.start.slice(11, 16));
+            const endStr = ev.allDay
+              ? ""
+              : " \u2013 " + formatTime12h(ev.end.slice(11, 16));
+            return `
+            <div class="event-card">
+              <div class="event-dot"></div>
+              <div class="event-details">
+                <span class="event-card-title">${escapeHtml(ev.title)}</span>
+                <span class="event-card-time">${timeStr}${endStr}</span>
+              </div>
+            </div>`;
+          })
+          .join("");
+      }
+    } else {
+      // Disconnected state
+      $("#calendar-setup").style.display = "block";
+      $("#calendar-connected").style.display = "none";
+      $("#disconnect-google-btn").style.display = "none";
+    }
   }
 
   // --- Event Handlers ---
   function addTodayTask() {
     const input = $("#new-task-input");
+    const timeInput = $("#new-task-time");
     const text = input.value.trim();
     if (!text) return;
 
-    todayTasks.push({ id: generateId(), text, done: false });
+    const time = timeInput.value || null;
+    todayTasks.push({ id: generateId(), text, done: false, time });
     saveToday();
     renderTodayList();
     input.value = "";
+    timeInput.value = "";
     input.focus();
   }
 
   function addRecurringTask() {
     const input = $("#new-recurring-input");
+    const timeInput = $("#new-recurring-time");
     const text = input.value.trim();
     if (!text) return;
 
-    const task = { id: generateId(), text };
+    const time = timeInput.value || null;
+    const task = { id: generateId(), text, time };
     recurringTasks.push(task);
     saveRecurring();
 
-    // Also add to today's list
     todayTasks.push({
       id: generateId(),
       text: task.text,
       done: false,
       recurringId: task.id,
+      time,
     });
     saveToday();
 
     renderRecurringList();
     renderTodayList();
     input.value = "";
+    timeInput.value = "";
     input.focus();
   }
 
@@ -332,11 +827,11 @@
       t.classList.toggle("active", t.dataset.tab === tabName);
     });
     document.querySelectorAll(".tab-content").forEach((s) => {
-      s.classList.toggle(
-        "active",
-        s.id === tabName + "-section"
-      );
+      s.classList.toggle("active", s.id === tabName + "-section");
     });
+
+    if (tabName === "history") renderHistory();
+    if (tabName === "calendar") renderCalendarSection();
   }
 
   // --- Menu ---
@@ -346,6 +841,23 @@
 
   function hideMenu() {
     $("#menu-overlay").classList.add("hidden");
+  }
+
+  // --- Cleanup ---
+  function cleanupOldData() {
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - 90);
+    const cutoffStr = cutoff.toISOString().slice(0, 10);
+
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith("dr_day_")) {
+        const dateStr = key.replace("dr_day_", "");
+        if (dateStr < cutoffStr) {
+          localStorage.removeItem(key);
+        }
+      }
+    }
   }
 
   // --- Init ---
@@ -365,8 +877,21 @@
 
     // Load data
     loadToday();
+    loadCachedEvents();
     renderTodayList();
     renderRecurringList();
+    renderCalendarSection();
+
+    // Cleanup old data
+    cleanupOldData();
+
+    // Init Google Calendar if previously connected
+    if (getClientId() && typeof google !== "undefined" && google.accounts) {
+      initTokenClient();
+      if (getStoredToken()) {
+        fetchCalendarEvents();
+      }
+    }
 
     // Tab events
     document.querySelectorAll(".tab").forEach((tab) => {
@@ -378,9 +903,15 @@
     $("#new-task-input").addEventListener("keydown", (e) => {
       if (e.key === "Enter") addTodayTask();
     });
+    $("#new-task-time").addEventListener("keydown", (e) => {
+      if (e.key === "Enter") addTodayTask();
+    });
 
     $("#add-recurring-btn").addEventListener("click", addRecurringTask);
     $("#new-recurring-input").addEventListener("keydown", (e) => {
+      if (e.key === "Enter") addRecurringTask();
+    });
+    $("#new-recurring-time").addEventListener("keydown", (e) => {
       if (e.key === "Enter") addRecurringTask();
     });
 
@@ -392,12 +923,14 @@
 
       if (e.target.closest(".delete-btn")) {
         deleteTodayTask(id);
-      } else if (e.target.closest(".checkbox") || e.target.closest(".task-text")) {
+      } else if (e.target.closest(".checkbox")) {
         toggleTask(id);
+      } else if (e.target.closest(".task-text")) {
+        startEditTask(item, id, "today");
       }
     });
 
-    // Keyboard accessibility for checkboxes
+    // Keyboard accessibility
     $("#task-list").addEventListener("keydown", (e) => {
       if (e.key === "Enter" || e.key === " ") {
         const checkbox = e.target.closest(".checkbox");
@@ -411,10 +944,30 @@
 
     // Recurring list click delegation
     $("#recurring-list").addEventListener("click", (e) => {
+      const item = e.target.closest(".task-item");
+      if (!item) return;
+
       if (e.target.closest(".delete-btn")) {
-        const item = e.target.closest(".task-item");
-        if (item) deleteRecurringTask(item.dataset.id);
+        deleteRecurringTask(item.dataset.id);
+      } else if (e.target.closest(".task-text")) {
+        startEditTask(item, item.dataset.id, "recurring");
       }
+    });
+
+    // Google Calendar events
+    $("#connect-google-btn").addEventListener("click", connectGoogle);
+    $("#save-client-id-btn").addEventListener("click", saveClientId);
+    $("#client-id-input").addEventListener("keydown", (e) => {
+      if (e.key === "Enter") saveClientId();
+    });
+    $("#refresh-calendar-btn").addEventListener("click", fetchCalendarEvents);
+    $("#show-setup-link").addEventListener("click", (e) => {
+      e.preventDefault();
+      showClientIdSetup();
+    });
+    $("#disconnect-google-btn").addEventListener("click", () => {
+      disconnectGoogle();
+      hideMenu();
     });
 
     // Menu
@@ -438,6 +991,7 @@
           text: r.text,
           done: false,
           recurringId: r.id,
+          time: r.time || null,
         }));
         saveToday();
         renderTodayList();
@@ -465,6 +1019,7 @@
         $("#date-display").textContent = formatDate(now);
         loadToday();
         renderTodayList();
+        if (getStoredToken()) fetchCalendarEvents();
       }
     }, 60000);
 
@@ -473,6 +1028,16 @@
       navigator.serviceWorker.register("sw.js").catch(() => {});
     }
   }
+
+  // GIS library loaded callback
+  window.onGisLoaded = function () {
+    if (getClientId()) {
+      initTokenClient();
+      if (getStoredToken()) {
+        fetchCalendarEvents();
+      }
+    }
+  };
 
   document.addEventListener("DOMContentLoaded", init);
 })();

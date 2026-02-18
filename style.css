@@ -48,6 +48,13 @@ header {
   align-items: center;
 }
 
+.header-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 4px;
+}
+
 h1 {
   font-size: 26px;
   font-weight: 700;
@@ -74,15 +81,24 @@ h1 {
 .date {
   font-size: 14px;
   color: var(--text-muted);
-  margin-top: 4px;
   font-weight: 500;
+}
+
+/* Streak */
+.streak {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #ffa94d;
 }
 
 #progress-bar-container {
   height: 4px;
   background: var(--border);
   border-radius: 2px;
-  margin-top: 16px;
+  margin-top: 12px;
   overflow: hidden;
 }
 
@@ -111,16 +127,17 @@ h1 {
 
 .tab {
   flex: 1;
-  padding: 10px;
+  padding: 10px 6px;
   border: none;
   background: transparent;
   color: var(--text-muted);
   font-family: inherit;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 600;
   cursor: pointer;
   border-radius: var(--radius-sm);
   transition: all 0.2s;
+  white-space: nowrap;
 }
 
 .tab.active {
@@ -150,11 +167,11 @@ main {
 /* Add task form */
 .add-task-form {
   display: flex;
-  gap: 10px;
+  gap: 8px;
   margin-bottom: 16px;
 }
 
-.add-task-form input {
+.add-task-form input[type="text"] {
   flex: 1;
   background: var(--surface);
   border: 1px solid var(--border);
@@ -165,14 +182,48 @@ main {
   font-size: 15px;
   outline: none;
   transition: border-color 0.2s, box-shadow 0.2s;
+  min-width: 0;
 }
 
-.add-task-form input::placeholder {
+.add-task-form input[type="text"]::placeholder {
   color: var(--text-muted);
 }
 
-.add-task-form input:focus {
+.add-task-form input[type="text"]:focus {
   border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-glow);
+}
+
+.time-input {
+  width: 48px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  padding: 14px 6px;
+  border-radius: var(--radius);
+  font-family: inherit;
+  font-size: 13px;
+  outline: none;
+  flex-shrink: 0;
+  text-align: center;
+  transition: border-color 0.2s, box-shadow 0.2s, color 0.2s;
+  cursor: pointer;
+}
+
+.time-input::-webkit-calendar-picker-indicator {
+  filter: invert(0.5);
+  cursor: pointer;
+}
+
+.time-input:focus,
+.time-input:valid {
+  border-color: var(--accent);
+  color: var(--text);
+  width: auto;
+  min-width: 48px;
+}
+
+.time-input:focus {
   box-shadow: 0 0 0 3px var(--accent-glow);
 }
 
@@ -277,11 +328,21 @@ main {
   height: 14px;
 }
 
+/* Task time badge */
+.task-time {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--accent);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
 .task-text {
   flex: 1;
   font-size: 15px;
   line-height: 1.4;
   word-break: break-word;
+  cursor: text;
 }
 
 .delete-btn {
@@ -303,6 +364,82 @@ main {
 .delete-btn:hover {
   color: var(--danger);
   background: rgba(255, 107, 107, 0.1);
+}
+
+/* Inline edit */
+.edit-wrap {
+  flex: 1;
+  display: flex;
+  gap: 8px;
+  min-width: 0;
+}
+
+.task-edit-input {
+  flex: 1;
+  background: var(--bg);
+  border: 1px solid var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-glow);
+  color: var(--text);
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  font-family: inherit;
+  font-size: 15px;
+  outline: none;
+  line-height: 1.4;
+  min-width: 0;
+}
+
+.edit-time-input {
+  width: 90px;
+  background: var(--bg);
+  border: 1px solid var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-glow);
+  color: var(--text);
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+  font-family: inherit;
+  font-size: 13px;
+  outline: none;
+  flex-shrink: 0;
+}
+
+.edit-time-input::-webkit-calendar-picker-indicator {
+  filter: invert(0.5);
+}
+
+/* Calendar event in timeline */
+.event-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: rgba(108, 99, 255, 0.06);
+  border: 1px solid rgba(108, 99, 255, 0.12);
+  border-radius: var(--radius);
+  padding: 12px 16px;
+  animation: slideIn 0.25s ease-out;
+}
+
+.event-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+  flex-shrink: 0;
+}
+
+.event-time {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.event-title {
+  flex: 1;
+  font-size: 14px;
+  color: var(--text-muted);
+  line-height: 1.4;
 }
 
 /* Recurring badge */
@@ -338,6 +475,224 @@ main {
   font-size: 13px;
   margin-top: 8px;
   opacity: 0.6;
+}
+
+/* Calendar setup */
+.calendar-setup {
+  text-align: center;
+  padding: 40px 0;
+}
+
+.calendar-setup-icon {
+  color: var(--accent);
+  margin-bottom: 20px;
+}
+
+.calendar-setup h3 {
+  font-size: 18px;
+  margin-bottom: 8px;
+}
+
+.connect-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--accent);
+  color: white;
+  border: none;
+  padding: 14px 24px;
+  border-radius: var(--radius);
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  margin-top: 20px;
+  transition: transform 0.15s, box-shadow 0.2s;
+}
+
+.connect-btn:hover {
+  transform: scale(1.02);
+  box-shadow: 0 4px 16px var(--accent-glow);
+}
+
+.setup-note {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 16px;
+}
+
+.setup-note a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.setup-note a:hover {
+  text-decoration: underline;
+}
+
+/* Client ID form */
+.client-id-form {
+  text-align: left;
+  max-width: 400px;
+  margin: 0 auto;
+}
+
+.client-id-form h3 {
+  font-size: 18px;
+  margin-bottom: 16px;
+  text-align: center;
+}
+
+.setup-steps {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px 16px 16px 20px;
+  margin-bottom: 16px;
+}
+
+.setup-steps ol {
+  padding-left: 16px;
+  font-size: 13px;
+  color: var(--text-muted);
+  line-height: 1.8;
+}
+
+.setup-steps strong {
+  color: var(--text);
+}
+
+.client-id-form input[type="text"] {
+  display: block;
+  width: 100%;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 14px 16px;
+  border-radius: var(--radius);
+  font-family: inherit;
+  font-size: 14px;
+  outline: none;
+  margin-bottom: 8px;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.client-id-form input[type="text"]:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-glow);
+}
+
+.client-id-form input[type="text"]::placeholder {
+  color: var(--text-muted);
+}
+
+/* Calendar connected */
+.calendar-connected {
+  padding-top: 8px;
+}
+
+.calendar-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.calendar-label {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.events-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.event-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+}
+
+.event-card .event-dot {
+  margin-top: 6px;
+}
+
+.event-details {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.event-card-title {
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.event-card-time {
+  font-size: 13px;
+  color: var(--accent);
+  font-weight: 500;
+}
+
+/* History */
+.history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.history-day {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+}
+
+.history-day.all-done {
+  border-color: rgba(81, 207, 102, 0.2);
+}
+
+.history-date {
+  min-width: 90px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.history-bar-container {
+  flex: 1;
+  height: 6px;
+  background: var(--border);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.history-bar {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.3s;
+}
+
+.history-count {
+  font-size: 13px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  min-width: 40px;
+  text-align: right;
+}
+
+.history-check {
+  color: var(--success);
+  flex-shrink: 0;
 }
 
 /* Menu overlay */
