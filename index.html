@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="theme-color" content="#1a1a2e">
+  <title>Daily Reminder</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="icons/icon-192.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="app">
+    <header>
+      <div class="header-top">
+        <h1>Daily Reminder</h1>
+        <button id="menu-btn" class="icon-btn" aria-label="Menu">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="1"/><circle cx="12" cy="5" r="1"/><circle cx="12" cy="19" r="1"/></svg>
+        </button>
+      </div>
+      <p id="date-display" class="date"></p>
+      <div id="progress-bar-container">
+        <div id="progress-bar"></div>
+      </div>
+      <p id="progress-text" class="progress-text"></p>
+    </header>
+
+    <nav id="tabs">
+      <button class="tab active" data-tab="today">Today</button>
+      <button class="tab" data-tab="recurring">Recurring</button>
+    </nav>
+
+    <main>
+      <section id="today-section" class="tab-content active">
+        <div class="add-task-form">
+          <input type="text" id="new-task-input" placeholder="Add a new task..." autocomplete="off">
+          <button id="add-task-btn" aria-label="Add task">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          </button>
+        </div>
+        <ul id="task-list" class="task-list"></ul>
+        <div id="empty-state" class="empty-state">
+          <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" opacity="0.3"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+          <p>No tasks for today</p>
+          <p class="hint">Add a task above or set up recurring tasks</p>
+        </div>
+      </section>
+
+      <section id="recurring-section" class="tab-content">
+        <div class="add-task-form">
+          <input type="text" id="new-recurring-input" placeholder="Add a recurring daily task..." autocomplete="off">
+          <button id="add-recurring-btn" aria-label="Add recurring task">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          </button>
+        </div>
+        <ul id="recurring-list" class="task-list"></ul>
+        <div id="recurring-empty" class="empty-state">
+          <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" opacity="0.3"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+          <p>No recurring tasks</p>
+          <p class="hint">Recurring tasks appear on your list every day</p>
+        </div>
+      </section>
+    </main>
+
+    <div id="menu-overlay" class="menu-overlay hidden">
+      <div class="menu-panel">
+        <h3>Settings</h3>
+        <button id="clear-completed-btn" class="menu-item">Clear completed tasks</button>
+        <button id="reset-today-btn" class="menu-item danger">Reset today's list</button>
+        <hr>
+        <button id="menu-close-btn" class="menu-item">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
